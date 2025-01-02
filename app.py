@@ -2,28 +2,27 @@ import streamlit as st
 import cv2
 from ultralytics import YOLO
 import numpy as np
+import torch
 
-# Load YOLOv8 model
-model = YOLO("yolov8n.pt")  # Use YOLOv8n for better speed and performance
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Streamlit UI
-st.title("Object Detection (using YOLOv8)")
-# st.write("This app uses your camera to detect objects in real-time. Allow camera permissions below.")
+model = YOLO("yolov8n.pt")  # Change this to yolov8n.pt or yolov8m.pt as per requirement
+model.to(device)
 
-# Camera feed start button
+st.title("Live Object Detection with YOLOv8")
+st.write("This app uses your camera to detect objects in real-time. Allow camera permissions below.")
+
 start_detection = st.button("Start Camera")
 
-# Stream video when the button is clicked
 if start_detection:
-    # Open the webcam (camera index 0)
-    cap = cv2.VideoCapture(0)
     
+    cap = cv2.VideoCapture(0)
+
     if not cap.isOpened():
         st.error("Unable to access the camera.")
     else:
         st.write("Press 'q' in the camera window to stop the detection.")
-        
-        # Create a placeholder for the video frames
+
         video_placeholder = st.empty()
 
         while True:
@@ -32,19 +31,16 @@ if start_detection:
                 st.error("Failed to grab a frame.")
                 break
 
-            # Run YOLOv8 inference on the frame
-            results = model(frame, conf=0.5)
-            
-            # Annotate the frame with detection results
-            annotated_frame = results[0].plot()
-            
-            # Convert the frame to RGB (for Streamlit compatibility)
-            annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-            
-            # Display the frame in the placeholder
-            video_placeholder.image(annotated_frame_rgb, channels="RGB")
+            frame_resized = cv2.resize(frame, (640, 480))
 
-            # Check for the 'q' key to stop the stream
+            results = model(frame_resized, conf=0.5, device=device)  # Explicitly send to correct device
+            
+            annotated_frame = results[0].plot()
+
+            annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+
+            video_placeholder.image(annotated_frame_rgb, channels="RGB", use_column_width=True)
+
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
