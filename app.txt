@@ -11,7 +11,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model = YOLO("yolov8n.pt")
 model.to(device)
 
-st.title("Object Detection (using YOLOv8)")
+st.title("Object Detection with YOLOv8")
 
 start_detection = st.button("Start")
 
