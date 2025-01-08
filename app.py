@@ -1,81 +1,66 @@
 import streamlit as st
 import cv2
+from ultralytics import YOLO
 import numpy as np
 import torch
-from ultralytics import YOLO
-import base64
-import io
-from streamlit.components.v1 import html
+
+# Select device
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load YOLO model
-device = "cuda" if torch.cuda.is_available() else "cpu"
 model = YOLO("yolov8n.pt")
+#"C:\Users\aayus\OneDrive\Desktop\Object Detection App\yolov8n.pt"
 model.to(device)
 
 # App title
 st.title("Object Detection (using YOLOv8)")
 
-# JavaScript for webcam capture
-html_code = """
-<script>
-    let video;
-    let canvas;
-    let ctx;
-    let videoStream;
-    let videoWidth = 640;
-    let videoHeight = 480;
+# Persistent state for detection
+if "running" not in st.session_state:
+    st.session_state.running = False
 
-    async function startVideo() {
-        video = document.createElement('video');
-        canvas = document.createElement('canvas');
-        ctx = canvas.getContext('2d');
-        
-        videoStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: videoWidth, height: videoHeight }
-        });
+start_detection = st.button("Start")
+if start_detection:
+    st.session_state.running = True
 
-        video.srcObject = videoStream;
-        video.play();
-        
-        // Set up canvas size
-        canvas.width = videoWidth;
-        canvas.height = videoHeight;
+if st.session_state.running:
+    cap = cv2.VideoCapture(0)  # Adjust '0' for external cameras
 
-        // Start sending video frames every 100 ms
-        setInterval(() => {
-            ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-            let dataUrl = canvas.toDataURL('image/png'); 
-            window.parent.postMessage(dataUrl, "*");
-        }, 100);
-    }
+    if not cap.isOpened():
+        st.error("Unable to access the camera.")
+        st.session_state.running = False
+    else:
+        st.write("Press 'Stop' to end detection.")
+        stop_detection = st.button("Stop")
 
-    startVideo();
-</script>
-"""
+        video_placeholder = st.empty()
 
-# Display the webcam stream using custom HTML
-html(html_code, height=500)
+        while st.session_state.running and cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Failed to grab a frame.")
+                st.session_state.running = False
+                break
 
-# Create a placeholder for displaying frames
-video_placeholder = st.empty()
+            # Resize for consistency
+            frame_resized = cv2.resize(frame, (640, 480))
 
-# Capture and process frames in Python
-if st.button("Start Detection"):
-    # Get the base64 image data from JavaScript
-    data_url = st.text_input("Paste Image Data URL", "")
+            # YOLO inference
+            results = model(frame_resized, conf=0.5, device=device)
 
-    if data_url:
-        # Convert base64 data to OpenCV image
-        img_data = base64.b64decode(data_url.split(',')[1])
-        np_img = np.asarray(bytearray(img_data), dtype=np.uint8)
-        frame = cv2.imdecode(np_img, 1)
+            # Annotate detections
+            annotated_frame = results[0].plot()
 
-        # YOLO inference on the frame
-        results = model(frame, conf=0.5, device=device)
+            # Convert to RGB for Streamlit
+            annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
 
-        # Annotate detections
-        annotated_frame = results[0].plot()
+            # Display the frame
+            video_placeholder.image(annotated_frame_rgb, channels="RGB", use_column_width=True)
 
-        # Display the annotated frame
-        annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-        video_placeholder.image(annotated_frame_rgb, channels="RGB", use_column_width=True)
+            # Stop button action
+            if stop_detection:
+                st.session_state.running = False
+                st.write("Detection stopped.")
+                break
+
+        cap.release()
