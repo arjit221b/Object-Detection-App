@@ -11,4 +11,4 @@ ultralytics
 numpy
 torch
 Pillow
-requests
+streamlit-webrtc
